@@ -3,27 +3,38 @@ package standalone_storage
 import (
 	"github.com/pingcap-incubator/tinykv/kv/config"
 	"github.com/pingcap-incubator/tinykv/kv/storage"
+	"github.com/pingcap-incubator/tinykv/log"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
+
+	badger "github.com/dgraph-io/badger/v3"
 )
 
 // StandAloneStorage is an implementation of `Storage` for a single-node TinyKV instance. It does not
 // communicate with other nodes and all data is stored locally.
 type StandAloneStorage struct {
-	// Your Data Here (1).
+	db *badger.DB
 }
 
 func NewStandAloneStorage(conf *config.Config) *StandAloneStorage {
-	// Your Code Here (1).
-	return nil
+	db, err := badger.Open(badger.DefaultOptions("/tmp/badger"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &StandAloneStorage{db}
 }
 
 func (s *StandAloneStorage) Start() error {
-	// Your Code Here (1).
+	db, err := badger.Open(badger.DefaultOptions("/tmp/badger"))
+	if err != nil {
+		log.Fatalf("start badger db failed:%v", err)
+	}
+	s.db = db
 	return nil
 }
 
 func (s *StandAloneStorage) Stop() error {
-	// Your Code Here (1).
+	s.db.Close()
 	return nil
 }
 
