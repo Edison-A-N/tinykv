@@ -188,6 +188,16 @@ func (r *Raft) resetRandomElectionTimeout() {
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 }
 
+func (r *Raft) checkQuorum() bool {
+	votedCount := 0
+	for _, voted := range r.votes {
+		if voted {
+			votedCount++
+		}
+	}
+	return votedCount >= len(r.Prs)/2+1
+}
+
 // sendAppend sends an append RPC with new entries (if any) and the
 // current commit index to the given peer. Returns true if a message was sent.
 func (r *Raft) sendAppend(to uint64) bool {
@@ -310,16 +320,10 @@ func (r *Raft) Step(m pb.Message) error {
 		if m.GetMsgType() == pb.MessageType_MsgRequestVoteResponse {
 			r.votes[m.GetFrom()] = !m.GetReject()
 		}
-		votedCount := 0
-		for _, voted := range r.votes {
-			if voted {
-				votedCount++
-			}
-		}
-		if votedCount >= len(r.Prs)/2+1 {
+
+		if r.checkQuorum() {
 			r.becomeLeader()
 		}
-
 	case StateLeader:
 		if m.GetMsgType() == pb.MessageType_MsgBeat {
 			for i := range r.Prs {
