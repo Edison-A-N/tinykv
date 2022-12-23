@@ -385,21 +385,11 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 	if r.Term > m.GetTerm() {
 		return
 	}
-	if r.Term < m.GetTerm() {
+	if r.Term <= m.GetTerm() {
 		r.becomeFollower(m.GetTerm(), m.GetFrom())
 	}
-	if r.Term == m.GetTerm() {
-		if r.State == StateLeader {
-			for i := range r.Prs {
-				if i == r.id {
-					continue
-				}
-				r.sendHeartbeat(i)
-			}
-		}
-	}
 
-	r.electionElapsed = 0
+	r.heartbeatElapsed = 0
 	r.electionElapsed = 0
 	msg := pb.Message{
 		MsgType: pb.MessageType_MsgHeartbeatResponse,
