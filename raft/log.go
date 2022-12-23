@@ -55,8 +55,17 @@ type RaftLog struct {
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
-	// Your Code Here (2A).
-	return nil
+	fi, _ := storage.FirstIndex()
+	li, _ := storage.LastIndex()
+	entries, _ := storage.Entries(fi-1, li)
+	l := RaftLog{
+		storage:   storage,
+		committed: 0,
+		applied:   0,
+		stabled:   li,
+		entries:   entries,
+	}
+	return &l
 }
 
 // We need to compact the log entries in some point of time like
