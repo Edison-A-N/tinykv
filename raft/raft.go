@@ -173,13 +173,19 @@ func newRaft(c *Config) *Raft {
 		electionTimeout:  c.ElectionTick,
 		State:            StateFollower,
 
-		Prs:   make(map[uint64]*Progress),
+		RaftLog: newLog(c.Storage),
+
 		votes: make(map[uint64]bool),
 		msgs:  make([]pb.Message, 0),
 	}
+
 	for _, i := range c.peers {
-		r.Prs[i] = nil
+		r.Prs[i] = &Progress{
+			Next:  r.RaftLog.LastIndex() + 1,
+			Match: 0,
+		}
 	}
+
 	r.resetRandomElectionTimeout()
 	return &r
 }
