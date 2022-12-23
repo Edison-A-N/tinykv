@@ -274,9 +274,36 @@ func (r *Raft) becomeLeader() {
 // Step the entrance of handle message, see `MessageType`
 // on `eraftpb.proto` for what msgs should be handled
 func (r *Raft) Step(m pb.Message) error {
+	processHub := func() {
+		r.becomeCandidate()
+		if len(r.Prs) == 1 {
+			r.becomeLeader()
+		}
+		for i := range r.Prs {
+			if i == r.id {
+				continue
+			}
+			msg := pb.Message{
+				MsgType: pb.MessageType_MsgRequestVote,
+				From:    r.id,
+				To:      i,
+				Term:    r.Term,
+			}
+			r.msgs = append(r.msgs, msg)
+		}
+	}
+
 	switch r.State {
 	case StateFollower:
+		if m.GetMsgType() == pb.MessageType_MsgHup && r.State != StateLeader {
+			processHub()
+		}
+
 	case StateCandidate:
+		if m.GetMsgType() == pb.MessageType_MsgHup && r.State != StateLeader {
+			processHub()
+		}
+
 		if (m.GetMsgType() == pb.MessageType_MsgHeartbeat || m.GetMsgType() == pb.MessageType_MsgAppend) && m.GetTerm() >= r.Term {
 			r.becomeFollower(m.GetTerm(), m.GetFrom())
 		}
@@ -319,25 +346,6 @@ func (r *Raft) Step(m pb.Message) error {
 				}
 				r.msgs = append(r.msgs, msg)
 			}
-		}
-	}
-
-	if m.GetMsgType() == pb.MessageType_MsgHup && r.State != StateLeader {
-		r.becomeCandidate()
-		if len(r.Prs) == 1 {
-			r.becomeLeader()
-		}
-		for i := range r.Prs {
-			if i == r.id {
-				continue
-			}
-			msg := pb.Message{
-				MsgType: pb.MessageType_MsgRequestVote,
-				From:    r.id,
-				To:      i,
-				Term:    r.Term,
-			}
-			r.msgs = append(r.msgs, msg)
 		}
 	}
 
