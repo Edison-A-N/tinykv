@@ -175,6 +175,7 @@ func newRaft(c *Config) *Raft {
 
 		RaftLog: newLog(c.Storage),
 
+		Prs:   make(map[uint64]*Progress),
 		votes: make(map[uint64]bool),
 		msgs:  make([]pb.Message, 0),
 	}
@@ -295,6 +296,8 @@ func (r *Raft) Step(m pb.Message) error {
 		if len(r.Prs) == 1 {
 			r.becomeLeader()
 		}
+		logIndex := r.RaftLog.LastIndex()
+		logTerm, _ := r.RaftLog.Term(logIndex)
 		for i := range r.Prs {
 			if i == r.id {
 				continue
@@ -304,6 +307,8 @@ func (r *Raft) Step(m pb.Message) error {
 				From:    r.id,
 				To:      i,
 				Term:    r.Term,
+				Index:   logIndex,
+				LogTerm: logTerm,
 			}
 			r.msgs = append(r.msgs, msg)
 		}
@@ -364,12 +369,22 @@ func (r *Raft) Step(m pb.Message) error {
 	}
 
 	if m.GetMsgType() == pb.MessageType_MsgRequestVote {
-		reject := true
-		if m.GetTerm() > r.Term {
-			reject = false
-			r.becomeFollower(m.GetTerm(), m.GetFrom())
-		} else if m.GetTerm() == r.Term && (r.State == StateFollower && (r.Vote == m.GetFrom()) || r.Vote == 0) {
-			reject = false
+		reject := false
+
+		logTerm, _ := r.RaftLog.Term(r.RaftLog.LastIndex())
+		if r.RaftLog.LastIndex() > m.Index || logTerm > m.LogTerm {
+			reject = true
+		}
+
+		if m.GetTerm() < r.Term {
+			reject = true
+		} else if m.GetTerm() == r.Term {
+			if r.Vote != 0 && r.Vote != m.From {
+				reject = true
+			}
+		}
+
+		if !reject {
 			r.becomeFollower(m.GetTerm(), m.GetFrom())
 		}
 
