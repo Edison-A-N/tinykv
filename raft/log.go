@@ -107,6 +107,9 @@ func (l *RaftLog) LastIndex() uint64 {
 
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
-	// Your Code Here (2A).
-	return 0, nil
+	if i >= l.stabled && i < l.LastIndex() {
+		offset := i - l.stabled
+		return l.unstableEntries()[offset].Term, nil
+	}
+	return l.storage.Term(i)
 }
