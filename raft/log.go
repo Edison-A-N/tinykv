@@ -57,14 +57,14 @@ type RaftLog struct {
 func newLog(storage Storage) *RaftLog {
 	fi, _ := storage.FirstIndex()
 	li, _ := storage.LastIndex()
-	entries, _ := storage.Entries(fi-1, li)
 	l := RaftLog{
 		storage:   storage,
-		committed: 0,
-		applied:   0,
+		committed: fi - 1,
+		applied:   fi - 1,
 		stabled:   li,
-		entries:   entries,
 	}
+	ents, _ := storage.Entries(fi, li+1)
+	l.entries = append(l.entries, ents...)
 	return &l
 }
 
