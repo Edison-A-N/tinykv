@@ -180,6 +180,11 @@ func newRaft(c *Config) *Raft {
 		msgs:  make([]pb.Message, 0),
 	}
 
+	storage := c.Storage
+	state, _, _ := storage.InitialState()
+	r.Term = state.GetTerm()
+	r.Vote = state.GetVote()
+
 	for _, i := range c.peers {
 		r.Prs[i] = &Progress{
 			Next:  r.RaftLog.LastIndex() + 1,
@@ -300,8 +305,6 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.State = StateFollower
 	r.Term = term
 	r.Lead = lead
-	r.Vote = lead
-
 }
 
 // becomeCandidate transform this peer's state to candidate
