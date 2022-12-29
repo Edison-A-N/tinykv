@@ -182,8 +182,6 @@ func newRaft(c *Config) *Raft {
 
 	storage := c.Storage
 	state, _, _ := storage.InitialState()
-	r.Term = state.GetTerm()
-	r.Vote = state.GetVote()
 
 	for _, i := range c.peers {
 		r.Prs[i] = &Progress{
@@ -194,7 +192,7 @@ func newRaft(c *Config) *Raft {
 
 	r.resetRandomElectionTimeout()
 
-	r.becomeFollower(r.Term, None)
+	r.becomeFollower(state.GetTerm(), state.GetVote())
 	return &r
 }
 
@@ -305,6 +303,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.State = StateFollower
 	r.Term = term
 	r.Lead = lead
+	r.Vote = lead
 }
 
 // becomeCandidate transform this peer's state to candidate
