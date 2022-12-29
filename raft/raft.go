@@ -413,6 +413,9 @@ func (r *Raft) Step(m pb.Message) error {
 			r.Prs[r.id].Next = r.RaftLog.LastIndex() + 1
 			r.Prs[r.id].Match = r.RaftLog.LastIndex()
 		}
+		if m.GetMsgType() == pb.MessageType_MsgHeartbeatResponse {
+			r.sendAppend(m.GetFrom())
+		}
 		if m.GetMsgType() == pb.MessageType_MsgAppendResponse {
 			if !m.Reject {
 				r.Prs[m.GetFrom()].Next = m.GetIndex() + 1
