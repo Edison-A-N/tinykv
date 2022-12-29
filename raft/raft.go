@@ -372,7 +372,7 @@ func (r *Raft) Step(m pb.Message) error {
 		reject := false
 
 		logTerm, _ := r.RaftLog.Term(r.RaftLog.LastIndex())
-		if r.RaftLog.LastIndex() > m.Index || logTerm > m.LogTerm {
+		if logTerm > m.LogTerm || logTerm == m.LogTerm && r.RaftLog.LastIndex() > m.Index {
 			reject = true
 		}
 
