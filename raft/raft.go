@@ -183,11 +183,13 @@ func newRaft(c *Config) *Raft {
 	for _, i := range c.peers {
 		r.Prs[i] = &Progress{
 			Next:  r.RaftLog.LastIndex() + 1,
-			Match: 0,
+			Match: r.RaftLog.LastIndex(),
 		}
 	}
 
 	r.resetRandomElectionTimeout()
+
+	r.becomeFollower(r.Term, None)
 	return &r
 }
 
@@ -205,11 +207,46 @@ func (r *Raft) checkQuorum() bool {
 	return votedCount >= len(r.Prs)/2+1
 }
 
+func (r *Raft) proposeEntries(ents ...*pb.Entry) {
+	entries := []pb.Entry{}
+	for i := range ents {
+		ents[i].Term = r.Term
+		ents[i].Index = r.RaftLog.LastIndex() + 1 + uint64(i)
+		entries = append(entries, *ents[i])
+	}
+	r.RaftLog.appendEntries(entries...)
+}
+
 // sendAppend sends an append RPC with new entries (if any) and the
 // current commit index to the given peer. Returns true if a message was sent.
 func (r *Raft) sendAppend(to uint64) bool {
-	// Your Code Here (2A).
-	return false
+	logIndex := r.Prs[to].Next - 1
+	logTerm, err := r.RaftLog.Term(logIndex)
+	if err != nil {
+		return false
+	}
+
+	size := r.RaftLog.LastIndex() - logIndex
+	var entries []*pb.Entry
+	entries = make([]*pb.Entry, 0, size)
+	ents := r.RaftLog.Entries(logIndex+1, size)
+	for i := range ents {
+		entries = append(entries, &ents[i])
+	}
+
+	msg := pb.Message{
+		MsgType: pb.MessageType_MsgAppend,
+		From:    r.id,
+		To:      to,
+		Term:    r.Term,
+		LogTerm: logTerm,
+		Index:   logIndex,
+		Entries: entries,
+		Commit:  r.RaftLog.committed,
+	}
+
+	r.msgs = append(r.msgs, msg)
+	return true
 }
 
 // sendHeartbeat sends a heartbeat RPC to the given peer.
@@ -280,12 +317,20 @@ func (r *Raft) becomeLeader() {
 	// NOTE: Leader should propose a noop entry on its term
 	r.State = StateLeader
 
+	r.RaftLog.appendEntries(pb.Entry{
+		Term:  r.Term,
+		Index: r.RaftLog.LastIndex() + 1,
+		Data:  nil,
+	})
 	for i := range r.Prs {
 		if i == r.id {
 			continue
 		}
-		r.sendHeartbeat(i)
+		r.sendAppend(i)
 	}
+	r.Prs[r.id].Match = r.RaftLog.LastIndex()
+	r.Prs[r.id].Next = r.RaftLog.LastIndex() + 1
+
 }
 
 // Step the entrance of handle message, see `MessageType`
@@ -325,9 +370,6 @@ func (r *Raft) Step(m pb.Message) error {
 			processHub()
 		}
 
-		if (m.GetMsgType() == pb.MessageType_MsgHeartbeat || m.GetMsgType() == pb.MessageType_MsgAppend) && m.GetTerm() >= r.Term {
-			r.becomeFollower(m.GetTerm(), m.GetFrom())
-		}
 		if m.GetMsgType() == pb.MessageType_MsgRequestVoteResponse {
 			r.votes[m.GetFrom()] = !m.GetReject()
 		}
@@ -345,27 +387,58 @@ func (r *Raft) Step(m pb.Message) error {
 			}
 		}
 		if m.GetMsgType() == pb.MessageType_MsgPropose {
+			r.proposeEntries(m.Entries...)
 			for i := range r.Prs {
 				if i == r.id {
 					continue
 				}
-
-				logTerm, _ := r.RaftLog.Term(r.RaftLog.LastIndex())
-				msg := pb.Message{
-					MsgType: pb.MessageType_MsgAppend,
-					To:      i,
-					From:    r.id,
-					Term:    r.Term,
-					LogTerm: logTerm,
-					Index:   r.RaftLog.LastIndex(),
+				r.sendAppend(i)
+			}
+			if len(r.Prs) == 1 {
+				r.RaftLog.commit(r.RaftLog.LastIndex())
+			}
+			r.Prs[r.id].Next = r.RaftLog.LastIndex() + 1
+			r.Prs[r.id].Match = r.RaftLog.LastIndex()
+		}
+		if m.GetMsgType() == pb.MessageType_MsgAppendResponse {
+			if !m.Reject {
+				r.Prs[m.GetFrom()].Next = m.GetIndex() + 1
+				r.Prs[m.GetFrom()].Match = m.GetIndex()
+				commitedCount := 0
+				nextIdx := m.GetIndex() + 1
+				for i := range r.Prs {
+					if r.Prs[i].Next >= nextIdx {
+						commitedCount += 1
+					}
 				}
-				r.msgs = append(r.msgs, msg)
+				if commitedCount >= len(r.Prs)/2+1 {
+					preparedCommited := nextIdx - 1
+					if t, _ := r.RaftLog.Term(preparedCommited); t == r.Term {
+						if canCommit := r.RaftLog.commit(nextIdx - 1); canCommit {
+							for i := range r.Prs {
+								if i == r.id {
+									continue
+								}
+								r.sendAppend(i)
+							}
+						}
+					}
+				}
+			} else {
+				if r.Prs[m.GetFrom()].Next > 1 {
+					r.Prs[m.GetFrom()].Match = m.GetCommit()
+					r.Prs[m.GetFrom()].Next--
+					r.sendAppend(m.GetFrom())
+				}
 			}
 		}
 	}
 
-	if m.GetMsgType() == pb.MessageType_MsgHeartbeat || m.GetMsgType() == pb.MessageType_MsgAppend {
+	if m.GetMsgType() == pb.MessageType_MsgHeartbeat {
 		r.handleHeartbeat(m)
+	}
+	if m.GetMsgType() == pb.MessageType_MsgAppend {
+		r.handleAppendEntries(m)
 	}
 
 	if m.GetMsgType() == pb.MessageType_MsgRequestVote {
@@ -378,10 +451,8 @@ func (r *Raft) Step(m pb.Message) error {
 
 		if m.GetTerm() < r.Term {
 			reject = true
-		} else if m.GetTerm() == r.Term {
-			if r.Vote != 0 && r.Vote != m.From {
-				reject = true
-			}
+		} else if m.GetTerm() == r.Term && r.Vote != 0 && r.Vote != m.From {
+			reject = true
 		}
 
 		if !reject {
@@ -464,6 +535,19 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 		To:      m.From,
 		Term:    r.Term,
 	}
+	if m.GetTerm() < r.Term {
+		msg.Reject = true
+		r.msgs = append(r.msgs, msg)
+		return
+	}
+
+	if m.GetTerm() >= r.Term {
+		r.becomeFollower(m.GetTerm(), m.GetFrom())
+	}
+
+	r.heartbeatElapsed = 0
+	r.electionElapsed = 0
+
 	r.msgs = append(r.msgs, msg)
 }
 
