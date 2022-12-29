@@ -402,20 +402,62 @@ func (r *Raft) Step(m pb.Message) error {
 
 // handleAppendEntries handle AppendEntries RPC request
 func (r *Raft) handleAppendEntries(m pb.Message) {
-	// Your Code Here (2A).
-}
-
-// handleHeartbeat handle Heartbeat RPC request
-func (r *Raft) handleHeartbeat(m pb.Message) {
-	if r.Term > m.GetTerm() {
-		return
+	resp := pb.Message{
+		MsgType: pb.MessageType_MsgAppendResponse,
+		To:      m.From,
+		From:    r.id,
+		Term:    m.GetTerm(),
+		Commit:  m.Commit,
 	}
-	if r.Term <= m.GetTerm() {
+
+	if r.Term > m.GetTerm() {
+		resp.Reject = true
+	} else if r.Term == m.GetTerm() {
+		if r.State == StateLeader {
+			resp.Reject = true
+		}
+		if r.State == StateCandidate && m.GetIndex() <= r.RaftLog.LastIndex() {
+			r.becomeFollower(m.GetTerm(), m.GetFrom())
+		}
+		if r.Lead != m.GetFrom() {
+			resp.Reject = true
+		}
+	} else if r.Term < m.GetTerm() {
 		r.becomeFollower(m.GetTerm(), m.GetFrom())
+	}
+
+	if t, _ := r.RaftLog.Term(m.GetIndex()); t != m.GetLogTerm() {
+		resp.Index = r.RaftLog.LastIndex()
+		resp.Term, _ = r.RaftLog.Term(resp.Index)
+		resp.Reject = true
+	}
+
+	if resp.Reject {
+		r.msgs = append(r.msgs, resp)
+		return
 	}
 
 	r.heartbeatElapsed = 0
 	r.electionElapsed = 0
+
+	ents := make([]pb.Entry, 0, len(m.Entries))
+	for i := range m.Entries {
+		ents = append(ents, *m.Entries[i])
+	}
+	r.RaftLog.appendEntries(ents...)
+
+	if t, _ := r.RaftLog.Term(m.GetCommit()); t == r.Term {
+		r.RaftLog.commit(m.GetCommit())
+	}
+
+	li := r.RaftLog.LastIndex()
+	resp.Index = li
+	resp.LogTerm, _ = r.RaftLog.Term(li)
+	r.msgs = append(r.msgs, resp)
+}
+
+// handleHeartbeat handle Heartbeat RPC request
+func (r *Raft) handleHeartbeat(m pb.Message) {
 	msg := pb.Message{
 		MsgType: pb.MessageType_MsgHeartbeatResponse,
 		From:    r.id,
