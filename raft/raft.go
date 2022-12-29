@@ -459,6 +459,7 @@ func (r *Raft) Step(m pb.Message) error {
 
 		if !reject {
 			r.becomeFollower(m.GetTerm(), m.GetFrom())
+			r.Lead = 0
 		}
 
 		msg := pb.Message{
@@ -491,9 +492,6 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		}
 		if r.State == StateCandidate && m.GetIndex() <= r.RaftLog.LastIndex() {
 			r.becomeFollower(m.GetTerm(), m.GetFrom())
-		}
-		if r.Lead != m.GetFrom() {
-			resp.Reject = true
 		}
 	} else if r.Term < m.GetTerm() {
 		r.becomeFollower(m.GetTerm(), m.GetFrom())
