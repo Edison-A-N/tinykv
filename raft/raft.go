@@ -200,14 +200,18 @@ func (r *Raft) resetRandomElectionTimeout() {
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 }
 
-func (r *Raft) checkQuorum() bool {
+func (r *Raft) checkQuorum() (win bool, lose bool) {
 	votedCount := 0
+	rejectCount := 0
+	major := len(r.Prs)/2 + 1
 	for _, voted := range r.votes {
 		if voted {
 			votedCount++
+		} else {
+			rejectCount++
 		}
 	}
-	return votedCount >= len(r.Prs)/2+1
+	return votedCount >= major, rejectCount >= major
 }
 
 func (r *Raft) proposeEntries(ents ...*pb.Entry) {
@@ -311,6 +315,8 @@ func (r *Raft) becomeCandidate() {
 	r.State = StateCandidate
 	r.Term++
 	r.Vote = r.id
+
+	r.votes = make(map[uint64]bool)
 	r.votes[r.id] = true
 }
 
@@ -376,9 +382,14 @@ func (r *Raft) Step(m pb.Message) error {
 			r.votes[m.GetFrom()] = !m.GetReject()
 		}
 
-		if r.checkQuorum() {
+		win, lose := r.checkQuorum()
+		if win {
 			r.becomeLeader()
 		}
+		if lose {
+			r.becomeFollower(r.Term, 0)
+		}
+
 	case StateLeader:
 		if m.GetMsgType() == pb.MessageType_MsgBeat {
 			for i := range r.Prs {
