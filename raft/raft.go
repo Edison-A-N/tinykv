@@ -460,20 +460,18 @@ func (r *Raft) Step(m pb.Message) error {
 	if m.GetMsgType() == pb.MessageType_MsgRequestVote {
 		reject := false
 
-		logTerm, _ := r.RaftLog.Term(r.RaftLog.LastIndex())
-		if logTerm > m.LogTerm || logTerm == m.LogTerm && r.RaftLog.LastIndex() > m.Index {
-			reject = true
-		}
-
 		if m.GetTerm() < r.Term {
 			reject = true
 		} else if m.GetTerm() == r.Term && r.Vote != 0 && r.Vote != m.From {
 			reject = true
-		}
-
-		if !reject {
+		} else {
 			r.becomeFollower(m.GetTerm(), m.GetFrom())
 			r.Lead = 0
+		}
+
+		logTerm, _ := r.RaftLog.Term(r.RaftLog.LastIndex())
+		if logTerm > m.LogTerm || logTerm == m.LogTerm && r.RaftLog.LastIndex() > m.Index {
+			reject = true
 		}
 
 		msg := pb.Message{
