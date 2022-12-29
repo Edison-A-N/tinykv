@@ -501,7 +501,7 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		if r.State == StateLeader {
 			resp.Reject = true
 		}
-		if r.State == StateCandidate && m.GetIndex() <= r.RaftLog.LastIndex() {
+		if m.GetIndex() <= r.RaftLog.LastIndex() {
 			r.becomeFollower(m.GetTerm(), m.GetFrom())
 		}
 	} else if r.Term < m.GetTerm() {
