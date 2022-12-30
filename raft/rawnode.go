@@ -146,22 +146,12 @@ func (rn *RawNode) Step(m pb.Message) error {
 func (rn *RawNode) Ready() Ready {
 
 	ready := Ready{
-		SoftState:        &SoftState{},
 		Entries:          make([]pb.Entry, 0, len(rn.Raft.RaftLog.unstableEntries())),
 		CommittedEntries: make([]pb.Entry, 0, len(rn.Raft.RaftLog.nextEnts())),
-		Messages:         make([]pb.Message, 0, len(rn.Raft.msgs)),
 	}
-
-	ready.SoftState.Lead = rn.Raft.Lead
-	ready.SoftState.RaftState = rn.Raft.State
-
-	ready.HardState.Commit = rn.Raft.RaftLog.committed
-	ready.HardState.Term = rn.Raft.Term
-	ready.HardState.Vote = rn.Raft.Vote
 
 	ready.Entries = append(ready.Entries, rn.Raft.RaftLog.unstableEntries()...)
 	ready.CommittedEntries = append(ready.CommittedEntries, rn.Raft.RaftLog.nextEnts()...)
-
 	ready.Messages = append(ready.Messages, rn.Raft.msgs...)
 
 	return ready
