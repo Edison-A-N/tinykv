@@ -159,8 +159,7 @@ func (rn *RawNode) Ready() Ready {
 
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {
-	// Your Code Here (2A).
-	return false
+	return len(rn.Raft.RaftLog.unstableEntries()) > 0
 }
 
 // Advance notifies the RawNode that the application has applied and saved progress in the
