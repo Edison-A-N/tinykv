@@ -108,7 +108,28 @@ func (l *RaftLog) commit(committed uint64) bool {
 		}
 		return false
 	}
+	return false
+}
 
+func (l *RaftLog) stable(stabled uint64) bool {
+	if stabled <= l.LastIndex() {
+		if stabled > l.stabled {
+			l.stabled = stabled
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func (l *RaftLog) apply(applied uint64) bool {
+	if applied <= l.LastIndex() {
+		if applied > l.applied {
+			l.applied = applied
+			return true
+		}
+		return false
+	}
 	return false
 }
 
