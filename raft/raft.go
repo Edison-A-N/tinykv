@@ -193,6 +193,7 @@ func newRaft(c *Config) *Raft {
 	r.resetRandomElectionTimeout()
 
 	r.becomeFollower(state.GetTerm(), state.GetVote())
+	r.RaftLog.commit(state.Commit)
 	return &r
 }
 
