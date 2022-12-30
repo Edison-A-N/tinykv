@@ -176,7 +176,14 @@ func (rn *RawNode) HasReady() bool {
 // Advance notifies the RawNode that the application has applied and saved progress in the
 // last Ready results.
 func (rn *RawNode) Advance(rd Ready) {
-	// Your Code Here (2A).
+	if len(rd.CommittedEntries) > 0 {
+		applied := rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+		rn.Raft.RaftLog.apply(applied)
+	}
+	if len(rd.Entries) > 0 {
+		stabled := rd.Entries[len(rd.Entries)-1].Index
+		rn.Raft.RaftLog.stable(stabled)
+	}
 }
 
 // GetProgress return the Progress of this node and its peers, if this
