@@ -529,8 +529,13 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 	}
 	r.RaftLog.appendEntries(ents...)
 
-	if t, _ := r.RaftLog.Term(m.GetCommit()); t == r.Term {
-		r.RaftLog.commit(m.GetCommit())
+	preCommited := m.GetCommit()
+	if len(m.GetEntries()) == 0 {
+		preCommited = min(preCommited, m.GetIndex())
+	}
+	preCommited = min(preCommited, r.RaftLog.LastIndex())
+	if t, _ := r.RaftLog.Term(preCommited); t <= r.Term {
+		r.RaftLog.commit(preCommited)
 	}
 
 	li := r.RaftLog.LastIndex()
