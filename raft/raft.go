@@ -327,9 +327,11 @@ func (r *Raft) becomeLeader() {
 	// NOTE: Leader should propose a noop entry on its term
 	r.State = StateLeader
 
+	noopIndex := r.RaftLog.LastIndex() + 1
+
 	r.RaftLog.appendEntries(pb.Entry{
 		Term:  r.Term,
-		Index: r.RaftLog.LastIndex() + 1,
+		Index: noopIndex,
 		Data:  nil,
 	})
 	for i := range r.Prs {
@@ -338,9 +340,11 @@ func (r *Raft) becomeLeader() {
 		}
 		r.sendAppend(i)
 	}
+	if len(r.Prs) == 1 {
+		r.RaftLog.commit(noopIndex)
+	}
 	r.Prs[r.id].Match = r.RaftLog.LastIndex()
 	r.Prs[r.id].Next = r.RaftLog.LastIndex() + 1
-
 }
 
 // Step the entrance of handle message, see `MessageType`
